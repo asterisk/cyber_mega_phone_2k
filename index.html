@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<!--
+  Cyber Mega Phone 2K
+  Copyright (C) 2017 Digium, Inc.
+
+  This program is free software, distributed under the terms of the
+  MIT License. See the LICENSE file at the top of the source tree.
+-->
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Cyber Mega Phone 2K</title>
+		<link rel="stylesheet" type="text/css" href="cyber_mega_phone.css">
+		<script src="lib/sdp-interop-sl-1.4.0.js"></script>
+		<script src="lib/jssip-3.0.13.js"></script>
+		<script src="utils.js"></script>
+		<script src="cyber_mega_phone.js"></script>
+		<script type="text/javascript">
+
+let phone;
+
+window.onload = function() {
+	document.getElementById("accountId").placeholder = "video";
+	document.getElementById("accountName").value = "";
+	document.getElementById("accountPassword").placeholder = "video";
+	document.getElementById("accountHost").placeholder = "localhost";
+	document.getElementById("accountRegister").checked = true;
+	document.getElementById("extension").placeholder = "video-conference";
+
+	document.getElementById("connect").value = "Connect";
+	document.getElementById("connect").disabled = false;
+	document.getElementById("call").value = "Call";
+	document.getElementById("call").disabled = true;
+
+	function findMediaView(parent, stream) {
+		let nodes = parent.childNodes;
+
+		for (let i = 0; i < nodes.length; ++i) {
+			if (nodes[i].id == stream.id) {
+				return nodes[i];
+			}
+		}
+
+		return null;
+	}
+
+	function createMediaControls(video) {
+		let controls = document.createElement("div");
+		controls.className = "media-controls";
+
+		// If only -webkit-media-controls were fully supported across browsers
+		let audioTracks = video.srcObject.getAudioTracks();
+		if (audioTracks.length > 0) {
+			let muteAudio = document.createElement("input");
+			muteAudio.type = "button";
+			muteAudio.value = "mute audio";
+			muteAudio.className = "audio-btn";
+			muteAudio.setAttribute("state", "unmute");
+			muteAudio.onclick = function() {
+				let state = this.getAttribute("state");
+				this.setAttribute("state", state == "mute" ? "unmute" : "mute");
+				this.value = state + " audio";
+				mute(video.srcObject, {audio: this.getAttribute("state") == "mute"});
+			};
+			controls.appendChild(muteAudio);
+		}
+
+		let videoTracks = video.srcObject.getVideoTracks();
+		if (videoTracks.length > 0) {
+			let muteVideo = document.createElement("input");
+			muteVideo.type = "button";
+			muteVideo.value = "mute video";
+			muteVideo.className = "video-btn";
+			muteVideo.setAttribute("state", "unmute");
+			muteVideo.onclick = function() {
+				let state = this.getAttribute("state");
+				this.setAttribute("state", state == "mute" ? "unmute" : "mute");
+				this.value = state + " video";
+				mute(video.srcObject, {video: this.getAttribute("state") == "mute"});
+			};
+			controls.appendChild(muteVideo);
+
+			if (video.srcObject.local == false) {
+				let fullScreen = document.createElement("input");
+				fullScreen.type = "button";
+				fullScreen.value = "fullscreen";
+				fullScreen.className = "fullScreen-btn";
+				fullScreen.onclick = function() {
+					this.fullScreen.request();
+				};
+
+				fullScreen.fullScreen = new FullScreen(video);
+				controls.appendChild(fullScreen);
+			}
+		}
+
+		return controls;
+	}
+
+	function createMediaView(stream) {
+		let mediaView = document.createElement("div");
+		mediaView.className = "media-view";
+		mediaView.id = stream.id; // Makes it easy to find later
+
+		let videoView = document.createElement("div");
+		let videoOverlay = document.createElement("div");
+		videoOverlay.classname = "media-overlay";
+
+		if (stream.local == false) {
+			let audioTracks = stream.getAudioTracks();
+			let videoTracks = stream.getVideoTracks();
+			let videoText = document.createTextNode("No Media Available");
+			if (audioTracks.length > 0) {
+				videoText = document.createTextNode("Audio Only");
+			} else if (videoTracks.length > 0) {
+				videoText = document.createTextNode("Waiting For Video");
+			}
+			videoOverlay.appendChild(videoText);
+
+			function checkForVideo() {
+				if (video.videoWidth < 10 || video.videoHeight < 10) {
+					videoView.style.display = 'none';
+					return;
+				}
+
+				videoOverlay.removeChild(videoText);
+				videoText = document.createTextNode("Remote Video");
+				videoOverlay.appendChild(videoText);
+
+				videoView.style.display = 'inline';
+			}
+
+			setInterval(checkForVideo, 1000);
+		} else {
+			let videoText = document.createTextNode("Local Video");
+			videoOverlay.appendChild(videoText);
+		}
+
+		mediaView.appendChild(videoOverlay);
+
+		let video = document.createElement("video");
+		video.autoplay = true;
+		video.srcObject = stream;
+		video.onloadedmetadata = function() {
+			let tracks = stream.getVideoTracks();
+
+			for (let i = 0; i < tracks.length; ++i) {
+				tracks[i].enabled = true;
+			}
+		};
+
+		// Video elements connected to local streams will by default
+		// echo both the video and the audio back to ourselves. Since
+		// we don't want to hear ourselves we mute it, which mutes only
+		// the audio portion.
+		if (stream.local == true) {
+			video.muted = true;
+		} else {
+			// We hide the video view until we receive video
+			videoView.style.display = 'none';
+		}
+
+		videoView.appendChild(video);
+		mediaView.appendChild(videoView);
+		mediaView.appendChild(createMediaControls(video));
+
+		return mediaView;
+	}
+
+	function removeMediaView(parent, stream) {
+		let node = findMediaView(parent, stream);
+		if (node) {
+			parent.removeChild(node);
+		}
+	}
+
+	function getValue(id) {
+		let obj = document.getElementById(id);
+		return obj.value ? obj.value : obj.placeholder;
+	}
+
+	document.getElementById("connect").addEventListener("click", function() {
+		if (document.getElementById("connect").value == "Disconnect") {
+			document.getElementById("call").value = "Call";
+			document.getElementById("call").disabled = true;
+			document.getElementById("connect").value = "Disconnecting";
+			document.getElementById("connect").disabled = true;
+
+			phone.disconnect();
+			return;
+		}
+
+		phone = new CyberMegaPhone(getValue("accountId"),
+								getValue("accountName"),
+								getValue("accountPassword"),
+								getValue("accountHost"),
+								document.getElementById("accountRegister").checked);
+
+		phone.handle("connected", function () {
+			if (document.getElementById("accountRegister").checked &&
+				document.getElementById("connect").value != "Disconnect") {
+				document.getElementById("connect").value = "Registering";
+			} else {
+				document.getElementById("connect").value = "Disconnect";
+				document.getElementById("connect").disabled = false;
+				document.getElementById("call").disabled = false;
+			}
+		});
+
+		phone.handle("disconnected", function () {
+			document.getElementById("connect").value = "Connect";
+			document.getElementById("connect").disabled = false;
+			document.getElementById("call").value = "Call";
+			document.getElementById("call").disabled = true;
+		});
+
+		phone.handle("registered", function () {
+			document.getElementById("connect").value = "Disconnect";
+			document.getElementById("connect").disabled = false;
+			document.getElementById("call").disabled = false;
+		});
+
+		phone.handle("registrationFailed", function () {
+			phone.disconnect();
+		});
+
+		phone.handle("incoming", function (reason) {
+			document.getElementById("call").value = "Answer";
+		});
+
+		phone.handle("failed", function (reason) {
+			document.getElementById("call").value = "Call";
+			document.getElementById("call").disabled = false;
+		});
+
+		phone.handle("ended", function (reason) {
+			document.getElementById("call").value = "Call";
+			document.getElementById("call").disabled = document.getElementById("connect").value == "Connect";
+		});
+
+		phone.handle("streamAdded", function (stream) {
+			document.getElementById("media-views").appendChild(createMediaView(stream));
+
+			document.getElementById("call").value = "Hangup";
+			document.getElementById("call").disabled = false;
+		});
+
+		phone.handle("streamRemoved", function (stream) {
+			removeMediaView(document.getElementById("media-views"), stream);
+		});
+
+		phone.connect();
+
+		document.getElementById("connect").disabled = true;
+		document.getElementById("connect").value = "Connecting";
+	});
+
+	document.getElementById("call").addEventListener("click", function() {
+		let node = document.getElementById("call");
+
+		if (node.value == "Call") {
+			phone.call(getValue("extension"));
+			node.disabled = true;
+			node.value = "Ringing";
+		} else if (node.value == "Answer") {
+			node.disabled = true;
+			node.value = "Hangup";
+		} else {
+			node.value = "Call";
+			phone.terminate();
+		}
+	});
+
+}; // window.onload
+
+window.onunload = function() {
+	if (phone) {
+		phone.disconnect();
+	}
+}; // window.onunload
+		</script>
+	</head>
+	<body>
+		<header>
+			<p><marquee behavior="alternate">Welcome to Cyber Mega Phone 2K Ultimate Dynamic Edition</marquee></p>
+		</header>
+		<div class="connection">
+			<input type="button" id="account" class="account" value="Account" onclick="accountShow()" />
+			<input type="button" id="connect" class="connect" value="Connect" />
+			<input type="button" id="call" class="call" value="Call" />
+		</div>
+		<div id="account-modal" class="account-modal">
+			<div class="account-content">
+				<span class="account-close" onclick="accountClose()">&times;</span>
+				<label>ID:</label>
+				<input type="text" id="accountId"/><br>
+				<label>Authorization Name:</label>
+				<input type="text" id="accountName"/><br>
+				<label>Authorization password:</label>
+				<input type="text" id="accountPassword" /><br>
+				<label>Host IP&sol;Name:</label>
+				<input type="text" id="accountHost" /><br>
+				<label>Register:</label>
+				<label class="switch">
+					<input type="checkbox" id="accountRegister" checked="true"/>
+					<div class="slider"></div>
+				</label>
+				<label>Extension:</label>
+				<input type="text" id="extension"/>
+			</div>
+		</div>
+		<div id="calling"></div>
+		<div id="media-views" class="media-views"></div>
+		<div class="footer">&copy; 2017 Digium, Inc.</div>
+		<script>
+FullScreen.prototype.request = function() {
+	if (this.is()) {
+		return;
+	}
+
+	if (this._obj.requestFullscreen) {
+		this._obj.requestFullscreen();
+	} else if (this._obj.mozRequestFullScreen) {
+		this._obj.mozRequestFullScreen();
+	} else if (this._obj.webkitRequestFullScreen) {
+		this._obj.webkitRequestFullScreen();
+	} else if (this._obj.msRequestFullscreen) {
+		this._obj.msRequestFullscreen();
+	}
+
+	this.setData(true);
+};
+
+function accountShow() {
+	let modal = document.getElementById("account-modal");
+	modal.style.display = "block";
+}
+
+function accountClose() {
+	let modal = document.getElementById("account-modal");
+	modal.style.display = "none";
+}
+
+window.onclick = function(event) {
+	let modal = document.getElementById("account-modal");
+	if (event.target == modal) {
+		modal.style.display = "none";
+	}
+}
+		</script>
+	</body>
+</html>
