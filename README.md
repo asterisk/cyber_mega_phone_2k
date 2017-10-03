@@ -28,7 +28,7 @@ You'll need to add a few additional settings to your configured pjsip endpoint.
 ```
 max_audio_streams=<num>
 max_video_streams=<num>
-bundle=yes
+webrtc=yes
 ```
 
 You will also need to configure an extension to dial. You should be able to dial out to another
