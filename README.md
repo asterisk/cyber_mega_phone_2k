@@ -22,13 +22,15 @@ Once installed configure Asterisk to listen for webrtc connections. See the
 [WebRTC tutorial](https://wiki.asterisk.org/wiki/display/AST/WebRTC+tutorial+using+SIPML5)
 on the Asterisk wiki. The configuration should be similar.
 
-You'll need to make a small addition to your configured pjsip endpoint. The following options
-need to be set to a number greater than one (the default) in order for Asterisk to allow more
-than one of each stream type:
+You'll need to add a few additional settings to your configured pjsip endpoint.
+`max_audio_streams` and `max_video_streams` need to be set to a number greater than one
+(the default) in order for Asterisk to allow more than one of each stream type. 
 ```
 max_audio_streams=<num>
 max_video_streams=<num>
+webrtc=yes
 ```
+
 You will also need to configure an extension to dial. You should be able to dial out to another
 endpoint, but the easiest way to check out the multistream capabilities is to dial into a
 [confbridge](https://wiki.asterisk.org/wiki/display/AST/ConfBridge)
