@@ -36,6 +36,27 @@ function CyberMegaPhone(id, name, password, host, register, audio=true, video=tr
 CyberMegaPhone.prototype = Object.create(EasyEvent.prototype);
 CyberMegaPhone.prototype.constructor = CyberMegaPhone;
 
+// This was taken from the WebRTC unified transition guide located at
+// https://docs.google.com/document/d/1-ZfikoUtoJa9k-GZG1daN0BU3IjIanQ_JSscHxQesvU/edit
+function isUnifiedPlanDefault() {
+	// Safari supports addTransceiver() but not Unified Plan when
+	// currentDirection is not defined.
+	if (!('currentDirection' in RTCRtpTransceiver.prototype))
+		return false;
+
+	// If Unified Plan is supported, addTransceiver() should not throw.
+	const tempPc = new RTCPeerConnection();
+	let canAddTransceiver = false;
+	try {
+		tempPc.addTransceiver('audio');
+		canAddTransceiver = true;
+	} catch (e) {
+	}
+
+	tempPc.close();
+	return canAddTransceiver;
+}
+
 CyberMegaPhone.prototype.connect = function () {
 	if (this._ua) {
 		this._ua.start(); // Just reconnect
@@ -56,6 +77,8 @@ CyberMegaPhone.prototype.connect = function () {
 		register: this.register,
 		register_expires : 300
 	};
+
+	this._unified = isUnifiedPlanDefault();
 
 	this._ua = new JsSIP.UA(config);
 
@@ -90,7 +113,7 @@ CyberMegaPhone.prototype.connect = function () {
 		rtc.on("sdp", function (data) {
 			if (isFirefox && data.originator === 'remote') {
 				data.sdp = data.sdp.replace(/actpass/g, 'active');
-			} else if (isChrome) {
+			} else if (isChrome && !that._unified) {
 				let desc = new RTCSessionDescription({type:data.type, sdp:data.sdp});
 				if (data.originator === 'local') {
 					converted = rtc.interop.toUnifiedPlan(desc);
