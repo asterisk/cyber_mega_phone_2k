@@ -12,7 +12,7 @@
 //JsSIP.debug.enable('JsSIP:*');
 
 let isFirefox = typeof InstallTrigger !== 'undefined';
-let isChrome = !!window.chrome && !!window.chrome.webstore;
+let isChrome = !!window.chrome && !!window.chrome;
 
 function CyberMegaPhone(id, name, password, host, register, audio=true, video=true) {
 	EasyEvent.call(this);
