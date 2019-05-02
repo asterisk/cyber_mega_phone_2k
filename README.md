@@ -61,6 +61,14 @@ enabled. Press it to dial the set extension. Depending on the extension you dial
 allowed your browser access, you should now see one or more video elements displayed. 'Hangup' or
 'Disconnect' to end.
 
+### Recommendations
+
+If you experience audio issues, it may be a good idea to turn on the jitterbuffer. This can cause
+the audio to be slightly delayed, but will also eliminate problems such as bursty audio packets
+causing disruptions. You can enable this option in confbridge.conf for a user, or you can do it
+through the dialplan before placing the user in the conference by using the JITTERBUFFER dialplan
+function for a more fine tuned experience.
+
 ### License
 
 Cyber Mega Phone 2K is released under the [MIT License](LICENSE) Copyright (C) 2017 Digium, Inc.
