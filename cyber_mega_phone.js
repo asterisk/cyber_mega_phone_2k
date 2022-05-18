@@ -24,6 +24,22 @@ function CyberMegaPhone(id, name, password, host, register, audio=true, video=tr
 	this.audio = audio;
 	this.video = video;
 
+	// If either video or audio isn't available, then disable so we don't fail.
+	navigator.mediaDevices.enumerateDevices()
+	.then(devices => {
+		const mics = devices.filter(device => device.kind == "audioinput");
+		const cams = devices.filter(device => device.kind == "videoinput");
+
+		if (!mics.length > 0) {
+			console.log("Microphone not available");
+			this.audio = false;
+		}
+		if (!cams.length > 0) {
+			console.log("Camera not available");
+			this.video = false;
+		}
+	})
+
 	this._locals = new Streams();
 	this._locals.bubble("streamAdded", this);
 	this._locals.bubble("streamRemoved", this);
